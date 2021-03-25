@@ -11,7 +11,138 @@ const mySwiper = new Swiper('.swiper-container', {
 
 const buttonCart = document.querySelector('.button-cart')
 const modalCart = document.querySelector('#modal-cart')
-const modalClose = document.querySelector('.modal-close')
+const modal = document.querySelector('.overlay')
+const more = document.querySelector('.more')
+const navigationLink = document.querySelectorAll('.navigation-link')
+const longGoodsList = document.querySelector('.long-goods-list')
+const cartTableGoods = document.querySelector('.cart-table__goods')
+const cartTableTotal = document.querySelector('.card-table__total')
+const buttonTextCartCount = document.querySelector('.cart-count')
+const clearCart = document.querySelector('.btn-clear')
+
+const getGoods = async function () {
+	const result = await fetch('db/db.json');
+	if (!result.ok){
+		throw 'Ошибка: ' + result.status;
+	}
+	return await result.json();
+}
+
+const cart = {
+	cartGoods: [],
+
+	renderCart(){
+		cartTableGoods.textContent = '';
+		this.cartGoods.forEach(({id, name, price, count}) => {
+			const trGood = document.createElement('tr')
+			trGood.className = 'cart-item';
+			trGood.dataset.id = id;
+
+			trGood.innerHTML = `
+				<td>${name}</td>
+				<td>${price}</td>
+				<td><button class="cart-btn-minus">-</button></td>
+				<td>${count}</td>
+				<td><button class="cart-btn-plus">+</button></td>
+				<td>${price * count}</td>
+				<td><button class="cart-btn-delete">x</button></td>
+			`;
+			cartTableGoods.append(trGood)
+		})
+
+		const totalPrice = this.cartGoods.reduce((sum, item) => {
+			return sum + item.price * item.count;
+		}, 0)
+
+		cartTableTotal.textContent = totalPrice + '$';
+		this.totalCount()
+	},
+
+	deleteGood(id) {
+		this.cartGoods = this.cartGoods.filter(item => id !== item.id);
+		this.renderCart()
+	},
+
+	minusGood(id) {
+		for (const item of this.cartGoods) {
+			if (item.id === id) {
+				if (item.count <= 1) {
+					this.deleteGood(id)
+				} else {
+					item.count--;
+				}
+				break;
+			}
+		}
+		this.renderCart()
+	},
+
+	plusGood(id) {
+		for (const item of this.cartGoods) {
+			if (item.id === id) {
+				item.count++;
+				break;
+			}
+		}
+		this.renderCart()
+	},
+
+	addCartGoods(id) {
+		const goodItem = this.cartGoods.find(item => item.id === id);
+		if (goodItem) {
+			this.plusGood(id);
+		} else {
+			getGoods()
+				.then(data => data.find(item => item.id === id))
+				.then(({id, name, price}) => {
+					this.cartGoods.push({
+						id,
+						name,
+						price,
+						count: 1
+					});
+				});
+		}
+	},
+
+	totalCount() {
+		const totalCount = this.cartGoods.reduce((count, item) => {
+			return count + item.count;
+		}, 0);
+		buttonTextCartCount.textContent = totalCount;
+	},
+
+	clearCart() {
+		this.cartGoods = []
+		this.renderCart()
+	}
+}
+
+document.body.addEventListener('click', event => {
+	const addToCart = event.target.closest('.add-to-cart')
+
+	if (addToCart){
+		cart.addCartGoods(addToCart.dataset.id)
+	}
+})
+
+cartTableGoods.addEventListener('click', event => {
+	const target = event.target;
+
+	if (target.tagName === "BUTTON") {
+		const id = target.closest('.cart-item').dataset.id;
+
+		if (target.classList.contains('cart-btn-delete')){
+			cart.deleteGood(id);
+		}
+		if (target.classList.contains('cart-btn-minus')){
+			cart.minusGood(id);
+		}
+		if (target.classList.contains('cart-btn-plus')){
+			cart.plusGood(id);
+		}
+	}
+})
 
 // Открываем окно
 const openModal = () => {
@@ -21,12 +152,14 @@ const openModal = () => {
 // Закрываем окно
 const closeModal = event => {
 	const target = event.target;
-	modalCart.classList.remove('show')
+	if (target.classList.contains('modal-close') || target.classList.contains('overlay')){
+		modalCart.classList.remove('show')
+	}
 }
 
 // scroll smooth
 
-(function(){
+{
 	const scrollLinks = document.querySelectorAll('a.scroll-link')
 
 	for (const scrollLink of scrollLinks){
@@ -39,26 +172,12 @@ const closeModal = event => {
 			})
 		});
 	}
-})()
+}
 
 // При клике по кнопке корзины - открываем окно с корзиной
 buttonCart.addEventListener('click', openModal)
 // При клике по крестику в окне - закрываем окно с корзиной
-modalClose.addEventListener('click', closeModal)
-
-// goods
-
-const more = document.querySelector('.more')
-const navigationItem = document.querySelectorAll('.navigation-item')
-const longGoodsList = document.querySelector('.long-goods-list')
-
-const getGoods = async function () {
-	const result = await fetch('db/db.json');
-	if (!result.ok){
-		throw 'Ошибка: ' + result.status;
-	}
-	return await result.json();
-}
+modal.addEventListener('click', closeModal)
 
 const createCard = function(objCard) {
 	const card = document.createElement('div')
@@ -102,39 +221,23 @@ more.addEventListener('click', event => {
 	getGoods().then(renderCards)
 })
 
+clearCart.addEventListener('click', event => {
+	event.preventDefault()
+	cart.clearCart()
+})
+
 const filterCards = function(field, value) {
 	getGoods()
-		.then(data => {
-			const filterGoods = data.filter(good => {
-				return good[field] === value
-			})
-			return filterGoods
-		})
+		.then(data => data.filter(good => good[field] === value))
 		.then(renderCards)
 }
 
 // buttons
-
-const all = document.getElementById("all")
-all.addEventListener('click', event => {
-	event.preventDefault()
-	all.scrollIntoView({
-		behavior: 'smooth',
-		block: 'start',
+navigationLink.forEach(link => {
+	link.addEventListener('click', event => {
+		event.preventDefault()
+		const field = link.dataset.field;
+		const value = link.textContent;
+		filterCards(field, value)
 	})
-	getGoods().then(renderCards)
-})
-
-// Аксессуары
-const acsessories = document.querySelector('.acsessories')
-acsessories.addEventListener('click', event => {
-	event.preventDefault()
-	filterCards("Accessories", "Womens")
-})
-
-// Одежда
-const closes = document.querySelector('.closes')
-closes.addEventListener('click', event => {
-	event.preventDefault()
-	filterCards("Clothing", "Mens")
-})
+});
